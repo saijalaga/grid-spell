@@ -1,109 +1,173 @@
 using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
-using TMPro;
 
 public class Card : MonoBehaviour
 {
     [Header("References")]
-    public Image frontImage;      // front icon (assign in prefab)
-    public GameObject frontFace;  // container for front (optional)
-    public GameObject backFace;   // container for back side
-    public Button button;         // optional button component
+    public Image frontImage;      
+    public GameObject frontFace;  
+    public GameObject backFace;   
+    public Button button;         
     [HideInInspector] public CardController cardController;
 
     [Header("State (runtime)")]
     public Sprite iconSprite;
-    public bool isSelected = false; // currently flipped face-up
-    public bool isMatched = false;  // permanently matched
+    public bool isSelected = false;
+    public bool isMatched = false;
 
-    // Flip animation parameters
     [Header("Flip settings")]
-    public float flipDuration = 0.28f; // total flip time
+    public float flipDuration = 0.28f;
 
     private Coroutine flipRoutine = null;
 
     private void Awake()
     {
-        // Ensure UI references are set
-        if (frontImage == null && frontFace != null)
+        try
         {
-            frontImage = frontFace.GetComponentInChildren<Image>();
+            if (frontImage == null && frontFace != null)
+                frontImage = frontFace.GetComponentInChildren<Image>();
+
+            if (button == null)
+                button = GetComponent<Button>();
+
+            if (button != null)
+            {
+                button.onClick.RemoveAllListeners();
+                button.onClick.AddListener(OnClickSelf);
+            }
         }
-        if (button == null)
+        catch (System.Exception e)
         {
-            button = GetComponent<Button>();
-        }
-        if (button != null)
-        {
-            button.onClick.RemoveAllListeners();
-            button.onClick.AddListener(OnClickSelf);
+            Debug.LogError("Error in Card Awake: " + e.Message);
         }
     }
 
     public void OnClickSelf()
     {
-        if (cardController != null)
-            cardController.CardClicked(this);
+        try
+        {
+            if (cardController != null)
+                cardController.CardClicked(this);
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError("Error in OnClickSelf: " + e.Message);
+        }
     }
 
     public void SetIconSprite(Sprite s)
     {
-        iconSprite = s;
-        if (frontImage != null) frontImage.sprite = iconSprite;
+        try
+        {
+            iconSprite = s;
+            if (frontImage != null)
+                frontImage.sprite = iconSprite;
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError("Error in SetIconSprite: " + e.Message);
+        }
     }
 
     public void Show()
     {
-        if (isMatched || isSelected) return;
-        isSelected = true;
-        StartFlip(true);
+        try
+        {
+            if (isMatched || isSelected) return;
+            isSelected = true;
+            StartFlip(true);
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError("Error in Show: " + e.Message);
+        }
     }
 
     public void Hide()
     {
-        if (isMatched) return;
-        isSelected = false;
-        StartFlip(false);
+        try
+        {
+            if (isMatched) return;
+            isSelected = false;
+            StartFlip(false);
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError("Error in Hide: " + e.Message);
+        }
     }
 
     public void MarkMatched()
     {
-        isMatched = true;
-        isSelected = true;
-        // disable interactions
-        if (button != null) button.interactable = false;
-        // optional matched animation (scale/pulse)
-        StartCoroutine(MatchedPulse());
+        try
+        {
+            isMatched = true;
+            isSelected = true;
+            if (button != null)
+                button.interactable = false;
+
+            StartCoroutine(MatchedPulse());
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError("Error in MarkMatched: " + e.Message);
+        }
     }
 
     private IEnumerator MatchedPulse()
     {
-        // simple scale pulse
         Vector3 start = transform.localScale;
         Vector3 target = start * 1.08f;
-        float t = 0f;
         float dur = 0.12f;
+
+        // Scale up
+        float t = 0f;
         while (t < dur)
         {
-            transform.localScale = Vector3.Lerp(start, target, t / dur);
-            t += Time.deltaTime;
+            try
+            {
+                transform.localScale = Vector3.Lerp(start, target, t / dur);
+                t += Time.deltaTime;
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError("Error during MatchedPulse scale up: " + e.Message);
+            }
             yield return null;
         }
+
+        // Scale down
         t = 0f;
         while (t < dur)
         {
-            transform.localScale = Vector3.Lerp(target, start, t / dur);
-            t += Time.deltaTime;
+            try
+            {
+                transform.localScale = Vector3.Lerp(target, start, t / dur);
+                t += Time.deltaTime;
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError("Error during MatchedPulse scale down: " + e.Message);
+            }
             yield return null;
         }
+
         transform.localScale = start;
     }
 
     private void StartFlip(bool showFront)
     {
-        if (flipRoutine != null) StopCoroutine(flipRoutine);
-        flipRoutine = StartCoroutine(FlipRoutine(showFront));
+        try
+        {
+            if (flipRoutine != null)
+                StopCoroutine(flipRoutine);
+            flipRoutine = StartCoroutine(FlipRoutine(showFront));
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError("Error in StartFlip: " + e.Message);
+        }
     }
 
     private IEnumerator FlipRoutine(bool showFront)
@@ -111,42 +175,64 @@ public class Card : MonoBehaviour
         float half = flipDuration / 2f;
         float elapsed = 0f;
 
-        // Rotate Y from 0 to 90 (hide), swap, then 90 -> 0
         Quaternion startRot = transform.localRotation;
         Quaternion midRot = startRot * Quaternion.Euler(0f, 90f, 0f);
 
+        // First half rotation
         while (elapsed < half)
         {
-            float t = elapsed / half;
-            transform.localRotation = Quaternion.Slerp(startRot, midRot, t);
-            elapsed += Time.deltaTime;
+            try
+            {
+                float t = elapsed / half;
+                transform.localRotation = Quaternion.Slerp(startRot, midRot, t);
+                elapsed += Time.deltaTime;
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError("Error during first half of FlipRoutine: " + e.Message);
+            }
             yield return null;
         }
+
         transform.localRotation = midRot;
 
-        // Swap face visibility at middle
-        if (frontFace != null && backFace != null)
+        // Swap faces
+        try
         {
-            frontFace.SetActive(showFront);
-            backFace.SetActive(!showFront);
+            if (frontFace != null && backFace != null)
+            {
+                frontFace.SetActive(showFront);
+                backFace.SetActive(!showFront);
+            }
+            else if (frontImage != null)
+            {
+                frontImage.enabled = showFront;
+            }
         }
-        else
+        catch (System.Exception e)
         {
-            // ensure frontImage only visible when showFront
-            if (frontImage != null) frontImage.enabled = showFront;
+            Debug.LogError("Error swapping faces in FlipRoutine: " + e.Message);
         }
 
+        // Second half rotation
         elapsed = 0f;
-        Quaternion endRot = startRot; // rotate back to original orientation
+        Quaternion endRot = startRot;
         while (elapsed < half)
         {
-            float t = elapsed / half;
-            transform.localRotation = Quaternion.Slerp(midRot, endRot, t);
-            elapsed += Time.deltaTime;
+            try
+            {
+                float t = elapsed / half;
+                transform.localRotation = Quaternion.Slerp(midRot, endRot, t);
+                elapsed += Time.deltaTime;
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError("Error during second half of FlipRoutine: " + e.Message);
+            }
             yield return null;
         }
-        transform.localRotation = endRot;
 
+        transform.localRotation = endRot;
         flipRoutine = null;
     }
 }

@@ -2,23 +2,20 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using TMPro;
-#if UNITY_EDITOR
-using UnityEditor;
-#endif
 
 public class CardController : MonoBehaviour
 {
     [Header("References")]
     [SerializeField] public Card cardPrefab;
     [SerializeField] public Transform gridTransform;
-    [SerializeField] public CardGridLayout Panel; // your layout script
+    [SerializeField] public CardGridLayout Panel;
     [SerializeField] private TMP_Text scoreText;
     [SerializeField] private UIManager UIController;
 
-    [Header("Sprites (Editor)")]
-    [SerializeField] private Sprite[] sprites; // optional static list
-    [SerializeField] private DefaultAsset spriteFolder; // optional: editor folder for sprites
+    [Header("Sprites (Assign in Inspector)")]
+    [SerializeField] private Sprite[] sprites;  // assign card face sprites in inspector
     private List<Sprite> allSprites;
+    private List<Sprite> spritePairs;
 
     [Header("Game Settings")]
     public int matchPoints = 10;
@@ -31,135 +28,143 @@ public class CardController : MonoBehaviour
     public AudioClip gameOverSound;
     public AudioSource audioSource;
 
-    // Runtime state
-    private List<Sprite> spritePairs;
     public int score = 0;
     private int comboCount = 0;
 
     public int gameRows = 0;
     public int gameCols = 0;
 
-    // Queue-based continuous flipping
     private Queue<Card> flipQueue = new Queue<Card>();
     private bool processing = false;
 
-    // For saving
     private const string HIGH_SCORE_KEY = "highscore";
     private const string LAST_ROWS_KEY = "lastRows";
     private const string LAST_COLS_KEY = "lastCols";
 
     void Awake()
     {
-        // Initialize lists
-        spritePairs = new List<Sprite>();
-        allSprites = new List<Sprite>();
-
-        // If user provided static sprites array, add them to allSprites as fallback
-        if (sprites != null && sprites.Length > 0)
+        try
         {
-            allSprites.AddRange(sprites);
+            spritePairs = new List<Sprite>();
+            allSprites = new List<Sprite>();
+
+            if (sprites != null && sprites.Length > 0)
+                allSprites.AddRange(sprites);
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogError($"Awake failed: {ex.Message}\n{ex.StackTrace}");
         }
     }
 
     void Start()
     {
-        // Optionally load last session layout
-        LoadProgress();
+        try
+        {
+            LoadProgress();
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogError($"Start failed: {ex.Message}\n{ex.StackTrace}");
+        }
     }
 
-    // Public API: called by UI
     public void SetData(int rows, int cols)
     {
-        if (rows <= 0 || cols <= 0)
+        try
         {
-            Debug.LogError("SetData called with invalid rows/cols.");
-            return;
+            if (rows <= 0 || cols <= 0)
+            {
+                Debug.LogError("SetData called with invalid rows/cols.");
+                return;
+            }
+
+            gameRows = rows;
+            gameCols = cols;
+
+            PrepareSprite(rows, cols);
+            CreateCards(rows * cols);
+            UpdateScoreUI();
+
+            if (Panel != null)
+            {
+                Panel.rows = rows;
+                Panel.columns = cols;
+                Panel.CalculateLayoutInputVertical();
+            }
         }
-
-        gameRows = rows;
-        gameCols = cols;
-
-        PrepareSprite(rows, cols);
-        CreateCards(rows * cols);
-        UpdateScoreUI();
-
-        if (Panel != null)
+        catch (System.Exception ex)
         {
-            Panel.rows = rows;
-            Panel.columns = cols;
-            Panel.CalculateLayoutInputVertical();
+            Debug.LogError($"SetData failed: {ex.Message}\n{ex.StackTrace}");
         }
     }
 
-    // ----------- Card click / queue processing --------------
     public void CardClicked(Card card)
     {
-        if (card == null) return;
-        // ignore clicks on already selected or matched cards
-        if (card.isSelected || card.isMatched) return;
+        try
+        {
+            if (card == null || card.isSelected || card.isMatched) return;
 
-        // Play flip sound
-        PlaySound(flipSound);
+            PlaySound(flipSound);
+            card.Show();
+            flipQueue.Enqueue(card);
 
-        // Show the card (starts flip animation)
-        card.Show();
-
-        // enqueue for comparison processing
-        flipQueue.Enqueue(card);
-
-        if (!processing)
-            StartCoroutine(ProcessFlipQueue());
+            if (!processing)
+                StartCoroutine(ProcessFlipQueue());
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogError($"CardClicked failed: {ex.Message}\n{ex.StackTrace}");
+        }
     }
 
     private IEnumerator ProcessFlipQueue()
     {
         processing = true;
+
         while (flipQueue.Count > 0)
         {
-            // small delay to allow animation / player perception
             yield return new WaitForSeconds(0.12f);
 
-            // process in pairs; if only one available, wait shortly to let player add more
             if (flipQueue.Count >= 2)
             {
                 Card first = flipQueue.Dequeue();
                 Card second = flipQueue.Dequeue();
 
-                // guard nulls
-                if (first == null || second == null) continue;
-                if (first == second)
-                {
-                    // If same card clicked twice quickly, ignore and continue.
+                if (first == null || second == null || first == second)
                     continue;
-                }
 
-                // allow the flip animation to reach visible state
                 yield return new WaitForSeconds(0.25f);
 
-                if (first.iconSprite == second.iconSprite)
+                bool isMatch = false;
+                try
                 {
-                    // match found
-                    first.MarkMatched();
-                    second.MarkMatched();
-
-                    comboCount++;
-                    score += matchPoints + comboCount * 2;
-                    PlaySound(matchSound);
-
-                    // optional small matched animation delay
-                    yield return new WaitForSeconds(0.12f);
+                    if (first.iconSprite == second.iconSprite)
+                    {
+                        first.MarkMatched();
+                        second.MarkMatched();
+                        comboCount++;
+                        score += matchPoints + comboCount * 2;
+                        PlaySound(matchSound);
+                        isMatch = true;
+                    }
+                    else
+                    {
+                        comboCount = 0;
+                        score -= mismatchPenalty;
+                        PlaySound(mismatchSound);
+                    }
                 }
-                else
+                catch (System.Exception ex)
                 {
-                    // mismatch
-                    comboCount = 0;
-                    score -= mismatchPenalty;
-                    PlaySound(mismatchSound);
+                    Debug.LogError($"ProcessFlipQueue failed: {ex.Message}\n{ex.StackTrace}");
+                }
 
-                    // Show mismatch for a bit, then hide
+                if (!isMatch)
+                {
                     yield return new WaitForSeconds(0.45f);
-                    first.Hide();
-                    second.Hide();
+                    if (first != null) first.Hide();
+                    if (second != null) second.Hide();
                 }
 
                 UpdateScoreUI();
@@ -167,247 +172,237 @@ public class CardController : MonoBehaviour
             }
             else
             {
-                // only one card in queue: give a short window for more flips
                 yield return new WaitForSeconds(0.2f);
             }
         }
+
         processing = false;
     }
 
-    // ----------- Create / Prepare sprites ---------------
     private void CreateCards(int totalCards)
     {
-        if (gridTransform == null)
+        try
         {
-            Debug.LogError("GridTransform is not assigned.");
-            return;
-        }
-
-        if (spritePairs == null || spritePairs.Count < totalCards)
-        {
-            Debug.LogError($"Not enough spritePairs ({spritePairs?.Count ?? 0}) for {totalCards} cards. Aborting CreateCards.");
-            return;
-        }
-
-        // Clear any existing children just in case
-        ClearGrid();
-
-        for (int i = 0; i < totalCards; i++)
-        {
-            Card card = Instantiate(cardPrefab, gridTransform);
-            if (card == null)
+            if (gridTransform == null)
             {
-                Debug.LogError("Failed to instantiate cardPrefab");
-                continue;
+                Debug.LogError("GridTransform is not assigned.");
+                return;
             }
-            card.SetIconSprite(spritePairs[i]);
-            card.cardController = this;
+
+            if (spritePairs == null || spritePairs.Count < totalCards)
+            {
+                Debug.LogError($"Not enough spritePairs ({spritePairs?.Count ?? 0}) for {totalCards} cards.");
+                return;
+            }
+
+            ClearGrid();
+
+            for (int i = 0; i < totalCards; i++)
+            {
+                Card card = Instantiate(cardPrefab, gridTransform);
+                card.SetIconSprite(spritePairs[i]);
+                card.cardController = this;
+            }
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogError($"CreateCards failed: {ex.Message}\n{ex.StackTrace}");
         }
     }
 
     private void PrepareSprite(int rows, int cols)
     {
-        // reset
-        spritePairs = new List<Sprite>();
-        if (allSprites == null) allSprites = new List<Sprite>();
-
-#if UNITY_EDITOR
-        // If a folder is assigned in editor, try to load sprites from it
-        if (spriteFolder != null)
+        try
         {
-            allSprites.Clear();
-            string folderPath = AssetDatabase.GetAssetPath(spriteFolder);
-            string[] guids = AssetDatabase.FindAssets("t:Sprite", new[] { folderPath });
-            foreach (string guid in guids)
+            spritePairs = new List<Sprite>();
+            allSprites = new List<Sprite>();
+
+            if (sprites != null && sprites.Length > 0)
+                allSprites.AddRange(sprites);
+
+            int totalCards = rows * cols;
+            int totalPairs = totalCards / 2;
+
+            if (allSprites.Count < totalPairs)
             {
-                string path = AssetDatabase.GUIDToAssetPath(guid);
-                Sprite sprite = AssetDatabase.LoadAssetAtPath<Sprite>(path);
-                if (sprite != null) allSprites.Add(sprite);
+                Debug.LogError($"Not enough sprites! Need {totalPairs}, but only {allSprites.Count} provided.");
+                return;
             }
-        }
-#endif
 
-        // Fallback: if editor methods didn't populate sprites, try to use the serialized sprites array
-        if ((allSprites == null || allSprites.Count == 0) && sprites != null && sprites.Length > 0)
+            List<Sprite> chosen = new List<Sprite>();
+            System.Random rand = new System.Random();
+            while (chosen.Count < totalPairs)
+            {
+                int idx = rand.Next(0, allSprites.Count);
+                Sprite s = allSprites[idx];
+                if (!chosen.Contains(s)) chosen.Add(s);
+            }
+
+            foreach (var s in chosen)
+            {
+                spritePairs.Add(s);
+                spritePairs.Add(s);
+            }
+
+            spritePairs = ShuffleList(spritePairs);
+        }
+        catch (System.Exception ex)
         {
-            allSprites = new List<Sprite>(sprites);
+            Debug.LogError($"PrepareSprite failed: {ex.Message}\n{ex.StackTrace}");
         }
-
-        // Runtime fallback: Resources folder. Place sprites in Assets/Resources/Sprites/<folderName>
-        if (allSprites == null || allSprites.Count == 0)
-        {
-            LoadSpritesFromResources("Sprites"); // default folder under Resources
-        }
-
-        int totalCards = rows * cols;
-
-        if (totalCards % 2 != 0)
-        {
-            Debug.LogWarning("Requested total cards is odd; last card will not have a pair. Consider using even total.");
-        }
-
-        int totalPairs = totalCards / 2;
-
-        if (allSprites.Count < totalPairs)
-        {
-            Debug.LogError($"Not enough sprites available. Required pairs: {totalPairs}, Found sprites: {allSprites.Count}");
-            return;
-        }
-
-        // choose random unique sprites for pairs
-        List<Sprite> chosen = new List<Sprite>();
-        System.Random rand = new System.Random();
-        while (chosen.Count < totalPairs)
-        {
-            int idx = rand.Next(0, allSprites.Count);
-            Sprite s = allSprites[idx];
-            if (!chosen.Contains(s)) chosen.Add(s);
-        }
-
-        foreach (var s in chosen)
-        {
-            spritePairs.Add(s);
-            spritePairs.Add(s); // pair
-        }
-
-        spritePairs = ShuffleList(spritePairs);
-        Debug.Log($"Prepared {spritePairs.Count} sprites for {rows}x{cols} grid.");
     }
 
     private List<Sprite> ShuffleList(List<Sprite> originalList)
     {
-        List<Sprite> randomList = new List<Sprite>();
-        System.Random r = new System.Random();
-        while (originalList.Count > 0)
+        try
         {
-            int randomIndex = r.Next(0, originalList.Count);
-            randomList.Add(originalList[randomIndex]);
-            originalList.RemoveAt(randomIndex);
+            List<Sprite> randomList = new List<Sprite>();
+            System.Random r = new System.Random();
+            while (originalList.Count > 0)
+            {
+                int randomIndex = r.Next(0, originalList.Count);
+                randomList.Add(originalList[randomIndex]);
+                originalList.RemoveAt(randomIndex);
+            }
+            return randomList;
         }
-        return randomList;
-    }
-
-    private void LoadSpritesFromResources(string resourcesFolder)
-    {
-        Sprite[] loaded = Resources.LoadAll<Sprite>(resourcesFolder);
-        if (loaded != null && loaded.Length > 0)
+        catch (System.Exception ex)
         {
-            allSprites = new List<Sprite>(loaded);
-            Debug.Log($"Loaded {loaded.Length} sprites from Resources/{resourcesFolder}");
-        }
-        else
-        {
-            allSprites = new List<Sprite>();
-            Debug.LogWarning($"No sprites found in Resources/{resourcesFolder}. Place sprites there or assign via editor.");
+            Debug.LogError($"ShuffleList failed: {ex.Message}\n{ex.StackTrace}");
+            return new List<Sprite>();
         }
     }
 
-    // ----------- Score, Game Over & UI ---------------
     private void UpdateScoreUI()
     {
-        if (scoreText != null)
-            scoreText.text = "Score: " + Mathf.Max(score, 0);
+        try
+        {
+            if (scoreText != null)
+                scoreText.text = "Score: " + Mathf.Max(score, 0);
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogError($"UpdateScoreUI failed: {ex.Message}\n{ex.StackTrace}");
+        }
     }
 
-
-
-    // ----------- Save / Load ---------------
     public void SaveProgress()
     {
-        int prev = PlayerPrefs.GetInt(HIGH_SCORE_KEY, 0);
-        PlayerPrefs.SetInt(HIGH_SCORE_KEY, Mathf.Max(prev, score));
-        PlayerPrefs.SetInt(LAST_ROWS_KEY, gameRows);
-        PlayerPrefs.SetInt(LAST_COLS_KEY, gameCols);
-        PlayerPrefs.Save();
-        Debug.Log("Progress saved.");
+        try
+        {
+            int prev = PlayerPrefs.GetInt(HIGH_SCORE_KEY, 0);
+            PlayerPrefs.SetInt(HIGH_SCORE_KEY, Mathf.Max(prev, score));
+            PlayerPrefs.SetInt(LAST_ROWS_KEY, gameRows);
+            PlayerPrefs.SetInt(LAST_COLS_KEY, gameCols);
+            PlayerPrefs.Save();
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogError($"SaveProgress failed: {ex.Message}\n{ex.StackTrace}");
+        }
     }
 
     public void LoadProgress()
     {
-        int r = PlayerPrefs.GetInt(LAST_ROWS_KEY, 0);
-        int c = PlayerPrefs.GetInt(LAST_COLS_KEY, 0);
-        int hs = PlayerPrefs.GetInt(HIGH_SCORE_KEY, 0);
-        if (hs > 0 && scoreText != null)
+        try
         {
-            // optionally display high score somewhere - here we append
-            scoreText.text = $"High: {hs}";
-        }
+            int r = PlayerPrefs.GetInt(LAST_ROWS_KEY, 0);
+            int c = PlayerPrefs.GetInt(LAST_COLS_KEY, 0);
+            int hs = PlayerPrefs.GetInt(HIGH_SCORE_KEY, 0);
 
-        if (r > 0 && c > 0)
+            if (hs > 0 && scoreText != null) scoreText.text = $"High: {hs}";
+            if (r > 0 && c > 0) SetData(r, c);
+        }
+        catch (System.Exception ex)
         {
-            // automatically start last grid (optional)
-            SetData(r, c);
+            Debug.LogError($"LoadProgress failed: {ex.Message}\n{ex.StackTrace}");
         }
     }
 
-    // ----------- Utility ---------------
     public void PlaySound(AudioClip clip)
     {
-        if (audioSource != null && clip != null)
-            audioSource.PlayOneShot(clip);
+        try
+        {
+            if (audioSource != null && clip != null) audioSource.PlayOneShot(clip);
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogError($"PlaySound failed: {ex.Message}\n{ex.StackTrace}");
+        }
     }
 
     public void StartNewGame()
     {
-        ClearGrid();
-        score = 0;
-        comboCount = 0;
-        UpdateScoreUI();
-        SetData(gameRows, gameCols);
-        if (UIController.gameOverPanel != null) UIController.gameOverPanel.SetActive(false);
+        try
+        {
+            ClearGrid();
+            score = 0;
+            comboCount = 0;
+            UpdateScoreUI();
+            SetData(gameRows, gameCols);
+            if (UIController != null && UIController.gameOverPanel != null)
+                UIController.gameOverPanel.SetActive(false);
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogError($"StartNewGame failed: {ex.Message}\n{ex.StackTrace}");
+        }
     }
 
     public void OnClickHomeButton()
     {
-        score = 0;
-        comboCount = 0;
-        UpdateScoreUI();
-        ClearGrid();
-        if (UIController != null) UIController.BackToHome();
+        try
+        {
+            score = 0;
+            comboCount = 0;
+            UpdateScoreUI();
+            ClearGrid();
+            if (UIController != null) UIController.BackToHome();
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogError($"OnClickHomeButton failed: {ex.Message}\n{ex.StackTrace}");
+        }
     }
 
     public void ClearGrid()
     {
-        if (gridTransform == null) return;
-        for (int i = gridTransform.childCount - 1; i >= 0; i--)
+        try
         {
-            Transform child = gridTransform.GetChild(i);
-            if (Application.isPlaying) Destroy(child.gameObject);
-#if UNITY_EDITOR
-            else UnityEditor.EditorApplication.delayCall += () => { if (child != null) DestroyImmediate(child.gameObject); };
-#endif
+            if (gridTransform == null) return;
+            for (int i = gridTransform.childCount - 1; i >= 0; i--)
+            {
+                Destroy(gridTransform.GetChild(i).gameObject);
+            }
+            flipQueue.Clear();
+            processing = false;
         }
-        flipQueue.Clear();
-        processing = false;
+        catch (System.Exception ex)
+        {
+            Debug.LogError($"ClearGrid failed: {ex.Message}\n{ex.StackTrace}");
+        }
     }
-
 
     private void CheckGameOver()
-{
-    try
     {
-        if (gridTransform == null) return;
-
-        foreach (Transform t in gridTransform)
+        try
         {
-            if (t == null) continue;
-            Card c = t.GetComponent<Card>();
-            if (c == null) continue;
-            if (!c.isMatched) return; // still unmatched cards remain
+            if (gridTransform == null) return;
+
+            foreach (Transform t in gridTransform)
+            {
+                Card c = t.GetComponent<Card>();
+                if (c != null && !c.isMatched) return;
+            }
+
+            Debug.Log("Game Over!");
+            PlaySound(gameOverSound);
+            SaveProgress();
+            if (UIController != null) UIController.ShowGameOverPanel();
         }
-
-        Debug.Log("Game Over!");
-        PlaySound(gameOverSound);
-        SaveProgress(); // save highscore and last layout
-
-        // Show Game Over UI
-        if (UIController != null)
-            UIController.ShowGameOverPanel();
+        catch (System.Exception ex)
+        {
+            Debug.LogError($"CheckGameOver failed: {ex.Message}\n{ex.StackTrace}");
+        }
     }
-    catch (System.Exception ex)
-    {
-        Debug.LogError("Error checking game over: " + ex.Message);
-    }
-}
-
 }
